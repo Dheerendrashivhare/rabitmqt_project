@@ -1,6 +1,8 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
+from pydantic import BaseModel
 from pymongo import MongoClient
 from datetime import datetime
+from typing import Dict
 
 # MongoDB connection
 MONGODB_HOST = "localhost"
@@ -13,8 +15,8 @@ client = MongoClient(MONGODB_HOST, MONGODB_PORT)
 db = client[MONGO_DB]
 collection = db[MONGODB_COLLECTION]
 
-@app.get('/test/get_status_count')
-async def fetch_status(startTime: datetime = Query(...), endTime: datetime = Query(...)):
+@app.post("/get_status_count")
+async def fetch_status(startTime: datetime = Query(...), endTime: datetime = Query(...)) -> Dict[str, int]:
     query = {
         "timestamp": {"$gte": startTime, "$lte": endTime}
     }

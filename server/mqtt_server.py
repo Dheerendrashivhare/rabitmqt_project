@@ -1,6 +1,7 @@
 import paho.mqtt.client as mqtt
 import json
 from pymongo import MongoClient
+from datetime import datetime
 
 # MQTT broker settings
 MQTT_BROKER = "localhost"
@@ -13,11 +14,14 @@ MONGO_PORT = 27017
 MONGO_DB = "mqtt_data"
 MONGO_COLLECTION = "status_messages"
 
-client = MongoClient(MONGO_HOST, MONGO_PORT)
-db = client[MONGO_DB]
+mqtt_client = mqtt.Client()
+
+# Create MongoDB client
+mongo_client = MongoClient(MONGO_HOST, MONGO_PORT)
+db = mongo_client[MONGO_DB]
 collection = db[MONGO_COLLECTION]
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, rc):
     if rc == 0:
         print("Connected to MQTT Broker!")
         client.subscribe(MQTT_TOPIC)
@@ -30,13 +34,15 @@ def on_disconnect(client, userdata, rc):
 def on_message(client, userdata, msg):
     message = json.loads(msg.payload.decode())
     print(f"Received message: {message}")
+    status = message["status"]
+    message["timestamp"] = datetime.now()
     collection.insert_one(message)
+    # collection.insert_one({"status": status, "timestamp": timestamp})
 
-client = mqtt.Client()
-client.on_connect = on_connect
-client.on_disconnect = on_disconnect
-client.on_message = on_message
 
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
-
-client.loop_forever()
+if __name__ == "__main__":
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_disconnect = on_disconnect
+    mqtt_client.on_message = on_message
+    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    mqtt_client.loop_forever()
