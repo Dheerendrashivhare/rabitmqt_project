@@ -1,48 +1,61 @@
-import paho.mqtt.client as mqtt
+import pika
 import json
 from pymongo import MongoClient
-from datetime import datetime
+from fastapi import FastAPI, HTTPException
+from datetime import datetime, timezone
+import threading
+from dateutil.parser import isoparse
 
-# MQTT broker settings
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC = "status_topic"
+# MongoDB connection setup
+client = MongoClient("mongodb://localhost:27017/")
+db = client.mqtt_database
+collection = db.mqtt_messages
 
-# MongoDB connection
-MONGO_HOST = "localhost"
-MONGO_PORT = 27017
-MONGO_DB = "mqtt_data"
-MONGO_COLLECTION = "status_messages"
+# RabbitMQ connection setup
+rabbitmq_connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+channel = rabbitmq_connection.channel()
+channel.queue_declare(queue='mqtt_queue')
 
-mqtt_client = mqtt.Client()
+app = FastAPI()
 
-# Create MongoDB client
-mongo_client = MongoClient(MONGO_HOST, MONGO_PORT)
-db = mongo_client[MONGO_DB]
-collection = db[MONGO_COLLECTION]
-
-def on_connect(client, rc):
-    if rc == 0:
-        print("Connected to MQTT Broker!")
-        client.subscribe(MQTT_TOPIC)
-    else:
-        print("Failed to connect, return code %d\n", rc)
-
-def on_disconnect(client, userdata, rc):
-    print("Disconnected from MQTT Broker!")
-
-def on_message(client, userdata, msg):
-    message = json.loads(msg.payload.decode())
-    print(f"Received message: {message}")
-    status = message["status"]
-    message["timestamp"] = datetime.now()
+def callback(ch, method, properties, body):
+    message = json.loads(body)
+    # Convert timestamp to datetime object
+    try:
+        message['timestamp'] = datetime.strptime(message['timestamp'], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc)
+    except ValueError:
+        print(f"Skipping invalid timestamp format: {message['timestamp']}")
+        return
     collection.insert_one(message)
-    # collection.insert_one({"status": status, "timestamp": timestamp})
+    print(f"Stored in MongoDB: {message}")
 
+channel.basic_consume(queue='mqtt_queue', on_message_callback=callback, auto_ack=True)
+
+@app.on_event("startup")
+def startup_event():
+    def rabbitmq_consume():
+        print("Starting RabbitMQ consumer...")
+        channel.start_consuming()
+
+    threading.Thread(target=rabbitmq_consume).start()
+
+@app.get("/status_counts/")
+async def get_status_counts(start_time: str, end_time: str):
+    try:
+        start_datetime = isoparse(start_time)
+        end_datetime = isoparse(end_time)
+
+        pipeline = [
+            {"$match": {"timestamp": {"$gte": start_datetime, "$lte": end_datetime}}},
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+        ]
+
+        result = list(collection.aggregate(pipeline))
+        return {item["_id"]: item["count"] for item in result}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_disconnect = on_disconnect
-    mqtt_client.on_message = on_message
-    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-    mqtt_client.loop_forever()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

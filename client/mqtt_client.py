@@ -1,39 +1,38 @@
 import paho.mqtt.client as mqtt
-import random
-import time
+import pika
 import json
+import time
+import random
 
-# MQTT broker settings
-MQTT_BROKER_HOST = "localhost"
-MQTT_BROKER_PORT = 1883
-MQTT_BROKER_TOPIC = "status_topic"
+# RabbitMQ connection setup
+rabbitmq_connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+channel = rabbitmq_connection.channel()
+channel.queue_declare(queue='mqtt_queue')
 
-client = mqtt.Client()
+# MQTT client setup
+mqtt_client = mqtt.Client()
 
-# def lets_connect(client, userdata, flags, res):
-#     if res == 0:
-#         print("Connecting to MQTT Broker!...........")
-#     else:
-#         print("Failed to connecting to MQTT, return code %d\n", res)
+def on_connect(client, userdata, flags, rc):
+    print(f"Connected with result code {rc}")
 
-# def get_disconnect(client, userdata, rc):
-#     print("Disconnecting from MQTT Broker!........")
+mqtt_client.on_connect = on_connect
+mqtt_client.connect("localhost", 1883, 60)
 
-
-# client.on_connect = lets_connect
-# client.on_disconnect = get_disconnect
-
-# client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
 def publish_status():
     while True:
-        status_value = random.randint(0, 6)
-        message = {"status": status_value}
-        client.publish(MQTT_BROKER_TOPIC, str(message))
-        print(f"This Message has been published: {message}")
+        status = random.randint(0, 6)
+        # Always use ISO format for timestamps
+        message = {"status": status, "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S')}
+        channel.basic_publish(exchange='', routing_key='mqtt_queue', body=json.dumps(message))
+        print(f"Published: {message}")
         time.sleep(1)
 
-# client.loop_forever()
 if __name__ == "__main__":
-    client.connect(MQTT_BROKER_HOST, MQTT_BROKER_PORT, 60)
-    client.loop_start()
-    publish_status()
+    mqtt_client.loop_start()
+    try:
+        publish_status()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        mqtt_client.loop_stop()
+        rabbitmq_connection.close()

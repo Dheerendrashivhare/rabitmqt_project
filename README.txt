@@ -24,13 +24,26 @@ This project demonstrates integration of MQTT messaging using RabbitMQ, data pro
 ##############################################
 
 COMMANDS - 
+To rabbitmq server
 
-cd client
-pip install -r requirements.txt
+rabbitmq-plugins enable rabbitmq_management
+rabbitmq-plugins enable rabbitmq_mqtt
+rabbitmq-server
+
+To get into working directory
+cd .\Dheerendra\rabitmqt_project\
+
+To generate messages
+.\env\Scripts\activate
+rabbitmq-server 
+
+cd mqtt_rabbitmq_project/client
+.\env\Scripts\activate
 python mqtt_client.py
 
-cd ../server
-pip install -r requirements.txt
+To print consumer data and start uvicorn 
+cd mqtt_rabbitmq_project/server
+.\env\Scripts\activate
 python mqtt_server.py
 
 
@@ -42,4 +55,5 @@ uvicorn app:app --reload
 
 after running successfully above command 
 then call  this endpoint of the api on postman and adjust the startTime and endTime according to you
-http://localhost:8000/test/get_status_count?startTime=2024-07-09T08:00:00&endTime=2024-07-09T12:00:00
+http://localhost:8000/status_counts?start_time=2024-07-09T08:00:00&end_time=2024-07-09T12:00:00
+curl -X GET "http://localhost:8000/status_counts/?start_time=2024-07-18T12:21:00&end_time=2024-07-18T12:22:00"

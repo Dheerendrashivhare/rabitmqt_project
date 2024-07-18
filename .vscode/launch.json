@@ -10,7 +10,7 @@
             "request": "launch",
             "module": "uvicorn",
             "args": [
-                "server.app:app",
+                "server.mqtt_server:app",
                 "--reload"
             ],
             "jinja": true
